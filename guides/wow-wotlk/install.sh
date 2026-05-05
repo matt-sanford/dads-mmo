@@ -164,21 +164,38 @@ else
         fi
 
         # Fix pacman keyring — required on SteamOS before installing anything
-        # steamos-devmode handles keyring init, populate, and dev headers
-        print_info "Initialising pacman keyring (this fixes trust errors)..."
+        print_info "Initialising pacman keyring (this may take a minute)..."
+
+        # Remove and reinitialise the keyring from scratch
+        # This fixes 'keyring is not writable' and 'key missing' errors
+        sudo rm -rf /etc/pacman.d/gnupg 2>/dev/null || true
+        sudo pacman-key --init 2>/dev/null || true
+        sudo pacman-key --populate archlinux 2>/dev/null || true
+        sudo pacman-key --populate holo 2>/dev/null || true
+
+        # Try steamos-devmode as an additional fix if available
         if command -v steamos-devmode &>/dev/null; then
             sudo steamos-devmode enable 2>/dev/null || true
-        else
-            # Manual keyring fix if steamos-devmode not available
-            sudo pacman-key --init 2>/dev/null || true
-            sudo pacman-key --populate archlinux 2>/dev/null || true
-            sudo pacman-key --populate holo 2>/dev/null || true
         fi
 
-        # Refresh package database and install Docker
+        # Update keyring package first before anything else
+        print_info "Updating keyring..."
+        sudo pacman -Sy --noconfirm --needed archlinux-keyring 2>/dev/null || true
+
+        # Now install Docker
         print_info "Installing Docker via pacman..."
-        sudo pacman -Sy --noconfirm archlinux-keyring 2>/dev/null || true
-        sudo pacman -Sy --noconfirm docker docker-compose
+        if ! sudo pacman -Sy --noconfirm docker docker-compose; then
+            print_error "Failed to install Docker via pacman."
+            print_info "Please try these manual steps in Konsole:"
+            print_info "  sudo steamos-readonly disable"
+            print_info "  sudo rm -rf /etc/pacman.d/gnupg"
+            print_info "  sudo pacman-key --init"
+            print_info "  sudo pacman-key --populate archlinux"
+            print_info "  sudo pacman-key --populate holo"
+            print_info "  sudo pacman -Sy --noconfirm docker docker-compose"
+            print_info "Then run this installer again."
+            exit 1
+        fi
 
     else
         # Standard Linux (Ubuntu, Debian, Fedora etc.)
@@ -186,12 +203,18 @@ else
         curl -fsSL https://get.docker.com | sudo sh
     fi
 
-    # Add current user to docker group (works on both paths)
-    sudo usermod -aG docker "$USER"
+    # Add current user to docker group
+    sudo usermod -aG docker "$USER" 2>/dev/null || true
 
     # Enable and start Docker service
-    sudo systemctl enable docker
-    sudo systemctl start docker
+    # On SteamOS the service may need a moment after installation
+    sleep 2
+    sudo systemctl daemon-reload 2>/dev/null || true
+    sudo systemctl enable docker 2>/dev/null || true
+    sudo systemctl start docker 2>/dev/null || true
+
+    # Give Docker a moment to fully start
+    sleep 3
 
     print_success "Docker installed successfully!"
     print_warning "NOTE: You may need to log out and back in for group permissions."
