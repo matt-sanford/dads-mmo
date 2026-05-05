@@ -1,75 +1,180 @@
 #!/bin/bash
 # ============================================================
-#  Dad's MMO Lab — WoW Gaming Mode Launcher
-#  Starts the server, waits for you to finish playing,
-#  then shuts everything down cleanly.
+#  Dad's MMO Lab — WoW Gaming Mode Launcher v7
+#  https://github.com/DadsMmoLab/dads-mmo-lab
 #
-#  Add this as a Non-Steam game to launch from Gaming Mode!
+#  FLOW:
+#  1. Launch this from Steam Gaming Mode
+#  2. Wait for "AZEROTH IS READY"
+#  3. Press Steam button → launch WoW
+#  4. Play!
+#  5. Close WoW → server auto-shuts down
 # ============================================================
 
-# Check server is installed
-if [ ! -d ~/wow-server ]; then
-    echo "========================================"
-    echo "  ❌ WoW server not found!"
-    echo "  Please run install.sh first."
-    echo "  github.com/DadsMmoLab/dads-mmo-lab"
-    echo "========================================"
-    read
+# Clean environment
+export PATH="/usr/bin:/usr/local/bin:/bin:$PATH"
+unset LD_PRELOAD
+unset LD_LIBRARY_PATH
+
+# All stderr to log
+LOGFILE="/tmp/wow-server-launch.log"
+exec 2>"$LOGFILE"
+
+# ─────────────────────────────────────────
+# CHECKS
+# ─────────────────────────────────────────
+clear
+echo ""
+echo "  ⚔️  DAD'S MMO LAB"
+echo "  ══════════════════════════════════════"
+echo "  WoW Offline Server"
+echo "  ══════════════════════════════════════"
+echo ""
+
+if [ ! -d "$HOME/wow-server" ]; then
+    echo "  ERR: Server not found!"
+    echo "  Run install.sh first."
+    sleep 5
     exit 1
 fi
 
-cd ~/wow-server
+if ! command -v docker &>/dev/null; then
+    echo "  ERR: Docker not found."
+    echo "  Reboot and try again."
+    sleep 5
+    exit 1
+fi
 
-echo "========================================"
-echo "  ⚔️  DAD'S MMO LAB"
-echo "  WoW Offline Server"
-echo "========================================"
-echo ""
+# ─────────────────────────────────────────
+# START SERVER
+# ─────────────────────────────────────────
 echo "  Starting server..."
 echo ""
 
-# Start server without phpMyAdmin
-docker compose up -d --scale phpmyadmin=0
+cd "$HOME/wow-server" || exit 1
 
-echo ""
-echo "  Waiting for world server..."
+docker compose up -d --scale phpmyadmin=0 \
+    >> "$LOGFILE" 2>&1
+
+if [ $? -ne 0 ]; then
+    echo "  ERR: Failed to start server."
+    echo "  Check: $LOGFILE"
+    sleep 10
+    exit 1
+fi
+
+echo "  Containers started!"
 echo ""
 
-# Wait for world server to be ready
-TIMEOUT=300
+# ─────────────────────────────────────────
+# WAIT FOR WORLD SERVER
+# ─────────────────────────────────────────
+echo "  Waiting for world to initialize..."
+echo "  First launch:       5-15 minutes"
+echo "  After first launch: ~30 seconds"
+echo ""
+
+TIMEOUT=900
 ELAPSED=0
+READY=0
+WORLD_CONTAINER=""
+
 while [ $ELAPSED -lt $TIMEOUT ]; do
-    if docker logs acore-docker-ac-worldserver-1 2>&1 | grep -q "World initialized"; then
-        break
+    WORLD_CONTAINER=$(docker ps --format '{{.Names}}' \
+        2>/dev/null | grep -i "worldserver" | head -1)
+
+    if [ -n "$WORLD_CONTAINER" ]; then
+        if docker logs "$WORLD_CONTAINER" \
+            2>/dev/null | grep -q "ready\.\.\."; then
+            READY=1
+            break
+        fi
     fi
-    printf "."
-    sleep 3
-    ELAPSED=$((ELAPSED + 3))
+
+    printf "  ."
+    sleep 5
+    ELAPSED=$((ELAPSED + 5))
 done
 
 echo ""
 echo ""
-echo "========================================"
-echo "  ✅ SERVER IS READY!"
-echo "  Launch WoW from your Steam library"
-echo ""
-echo "  Press ENTER when done playing"
-echo "  to shut down safely."
-echo "========================================"
-echo ""
 
-read
-
-echo ""
-echo "  Shutting down server..."
-echo ""
-
-docker compose down
+# ─────────────────────────────────────────
+# READY SCREEN
+# ─────────────────────────────────────────
+if [ $READY -eq 1 ]; then
+    echo "  ══════════════════════════════════════"
+    echo "  ✅ AZEROTH IS READY!"
+    echo "  ══════════════════════════════════════"
+else
+    echo "  ══════════════════════════════════════"
+    echo "  ⏳ Still initializing..."
+    echo "  ══════════════════════════════════════"
+fi
 
 echo ""
-echo "========================================"
+echo "  Press STEAM button and launch WoW"
+echo "  from your Steam library now."
+echo ""
+echo "  Server will AUTO-SHUTDOWN when"
+echo "  you close WoW. Enjoy! ⚔️"
+echo ""
+echo "  ══════════════════════════════════════"
+echo ""
+
+# ─────────────────────────────────────────
+# WAIT FOR WOW TO START
+# ─────────────────────────────────────────
+echo "  Waiting for WoW to launch..."
+echo ""
+
+# Wait up to 5 minutes for WoW to start
+WOW_STARTED=0
+for i in $(seq 1 60); do
+    if pgrep -f "Wow\.exe" > /dev/null 2>&1; then
+        WOW_STARTED=1
+        break
+    fi
+    sleep 5
+done
+
+# ─────────────────────────────────────────
+# WATCH FOR WOW TO CLOSE
+# ─────────────────────────────────────────
+if [ $WOW_STARTED -eq 1 ]; then
+    echo "  WoW detected! Have fun! ⚔️"
+    echo "  Server shuts down when WoW closes."
+    echo ""
+
+    # Wait for ALL Wow.exe processes to end
+    while pgrep -f "Wow\.exe" > /dev/null 2>&1; do
+        sleep 3
+    done
+
+    # Give Wine a moment to fully clean up
+    sleep 5
+    echo ""
+    echo "  WoW closed — shutting down server..."
+
+else
+    echo "  WoW not detected after 5 minutes."
+    echo "  Shutting down server."
+fi
+
+# ─────────────────────────────────────────
+# AUTO SHUTDOWN
+# ─────────────────────────────────────────
+echo ""
+
+cd "$HOME/wow-server"
+docker compose down >> "$LOGFILE" 2>&1
+
+echo "  ══════════════════════════════════════"
 echo "  ✅ Server stopped! Safe to close."
-echo "========================================"
+echo "  ══════════════════════════════════════"
+echo ""
+echo "  Thanks for playing!"
+echo "  youtube.com/@DadsMmoLab"
 echo ""
 
-exec bash
+sleep 5
