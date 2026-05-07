@@ -771,8 +771,7 @@ create_accounts() {
     if [ -z "$WORLD_CONTAINER" ]; then
         print_warning "Worldserver not detected yet."
         print_info "Create your account manually once the server is ready:"
-        print_info "  docker ps | grep worldserver"
-        print_info "  docker attach <container-name>"
+        print_info "  docker attach $WORLD_CONTAINER"
         print_info "  account create admin admin admin"
         print_info "  account set gmlevel admin 3 -1"
         print_info "  (exit: Ctrl+P then Ctrl+Q)"
@@ -780,34 +779,49 @@ create_accounts() {
     fi
 
     print_info "Detected worldserver: $WORLD_CONTAINER"
-    print_info "Creating default admin account via worldserver console..."
 
-    # Use worldserver console — works on ALL AzerothCore versions
-    # regardless of auth system (SRP6, SHA1, etc.)
-    docker exec -i "$WORLD_CONTAINER" sh -c \
-        'sleep 1 && echo "account create admin admin admin" && sleep 2 && echo "account set gmlevel admin 3 -1" && sleep 1' \
-        2>/dev/null || true
+    # Helper function — sends a single command and waits
+    send_console_command() {
+        local cmd="$1"
+        local wait="${2:-3}"
+        docker exec -i "$WORLD_CONTAINER" \
+            bash -c "echo '$cmd'" 2>/dev/null || true
+        sleep "$wait"
+    }
 
-    sleep 3
+    print_info "Creating default admin account..."
+    print_info "Waiting for console to be fully ready..."
+    sleep 10
 
-    # Verify by checking the database
+    # Send commands individually with delays between each
+    send_console_command "account create admin admin admin" 5
+    send_console_command "account set gmlevel admin 3 -1" 3
+
+    # Verify by checking database
     if [ -n "$DB_CONTAINER" ]; then
         ACCOUNT_CHECK=$(docker exec "$DB_CONTAINER" \
             mysql -uroot -ppassword acore_auth -sNe \
-            "SELECT COUNT(*) FROM account WHERE username=\'ADMIN\';" 2>/dev/null)
+            "SELECT COUNT(*) FROM account WHERE username='ADMIN';" 2>/dev/null)
         if [ "${ACCOUNT_CHECK}" = "1" ]; then
-            print_success "Default account created and verified!"
+            print_success "Default admin account created and verified!"
         else
-            print_warning "Account created — login may take a moment to activate."
+            # Fallback — try via worldserver attach
+            print_warning "Auto-creation uncertain. Trying alternate method..."
+            (echo "account create admin admin admin"; sleep 3; echo "account set gmlevel admin 3 -1"; sleep 2) | \
+                docker attach "$WORLD_CONTAINER" 2>/dev/null || true
+            sleep 3
+            print_info "If login fails, create manually:"
+            print_info "  docker attach $WORLD_CONTAINER"
+            print_info "  account create admin admin admin"
+            print_info "  account set gmlevel admin 3 -1"
+            print_info "  (exit: Ctrl+P then Ctrl+Q)"
         fi
-    else
-        print_success "Account creation command sent!"
     fi
 
     print_info "  Username: admin  |  Password: admin  |  GM Level: 3"
     echo ""
 
-    # Account creation loop — ask until they say no
+    # Account creation loop
     while true; do
         if ! ask_yes_no "Create another account?"; then
             break
@@ -830,13 +844,25 @@ create_accounts() {
         done
 
         print_info "Creating account: $NEW_USERNAME..."
+        send_console_command "account create ${NEW_USERNAME} ${NEW_PASSWORD} ${NEW_PASSWORD}" 5
+        send_console_command "account set gmlevel ${NEW_USERNAME} 3 -1" 3
 
-        docker exec -i "$WORLD_CONTAINER" sh -c \
-            "sleep 1 && echo \"account create ${NEW_USERNAME} ${NEW_PASSWORD} ${NEW_PASSWORD}\" && sleep 2 && echo \"account set gmlevel ${NEW_USERNAME} 3 -1\" && sleep 1" \
-            2>/dev/null || true
-
-        sleep 2
-        print_success "Account created: $NEW_USERNAME (GM Level 3)"
+        # Verify
+        if [ -n "$DB_CONTAINER" ]; then
+            CHECK=$(docker exec "$DB_CONTAINER" \
+                mysql -uroot -ppassword acore_auth -sNe \
+                "SELECT COUNT(*) FROM account WHERE username=UPPER('${NEW_USERNAME}');" 2>/dev/null)
+            if [ "${CHECK}" = "1" ]; then
+                print_success "Account created: $NEW_USERNAME ✅"
+            else
+                print_warning "Could not verify $NEW_USERNAME — create manually if needed:"
+                print_info "  docker attach $WORLD_CONTAINER"
+                print_info "  account create ${NEW_USERNAME} ${NEW_PASSWORD} ${NEW_PASSWORD}"
+                print_info "  account set gmlevel ${NEW_USERNAME} 3 -1"
+            fi
+        else
+            print_success "Account command sent: $NEW_USERNAME"
+        fi
         echo ""
     done
 }
