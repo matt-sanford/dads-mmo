@@ -11,6 +11,8 @@
 #  5. Close WoW → server auto-shuts down
 # ============================================================
 
+LAUNCHER_VERSION="1.2.0"
+
 # Clean environment
 export PATH="/usr/bin:/usr/local/bin:/bin:$PATH"
 unset LD_PRELOAD
@@ -25,7 +27,7 @@ exec 2>"$LOGFILE"
 # ─────────────────────────────────────────
 clear
 echo ""
-echo "  ⚔️  DAD'S MMO LAB"
+echo "  ⚔️  DAD'S MMO LAB — WoW Gaming Mode Launcher v${LAUNCHER_VERSION}"
 echo "  ══════════════════════════════════════"
 echo "  WoW Offline Server"
 echo "  ══════════════════════════════════════"
@@ -54,7 +56,8 @@ echo ""
 cd "$HOME/wow-server" || exit 1
 
 docker compose up -d --scale phpmyadmin=0 \
-    >> "$LOGFILE" 2>&1
+    >> "$LOGFILE" 2>&1 || \
+docker compose up -d >> "$LOGFILE" 2>&1
 
 if [ $? -ne 0 ]; then
     echo "  ERR: Failed to start server."
