@@ -5,6 +5,45 @@
 
 ---
 
+## ⚡ The Only Commands You Need
+
+Copy paste. That's it. No Linux knowledge required.
+
+**Base WoW:**
+```bash
+# Start
+cd ~/wow-server && docker compose up -d
+
+# Stop
+cd ~/wow-server && docker compose down
+```
+
+**NPCBots:**
+```bash
+# Start
+cd ~/wow-server-npcbots && docker compose up -d
+
+# Stop
+cd ~/wow-server-npcbots && docker compose down
+```
+
+**Playerbots:**
+```bash
+# Start
+cd ~/wow-server-playerbots && docker compose up -d
+
+# Stop
+cd ~/wow-server-playerbots && docker compose down
+```
+
+> ⚠️ Only run ONE server at a time — they share the same
+> ports. Stop one before starting another.
+
+> 💡 Gaming Mode handles start and stop automatically.
+> These commands are only needed in Desktop Mode.
+
+---
+
 ## 🧠 Understanding What's Actually Happening
 
 Before diving in — here's what your WoW server actually is.
