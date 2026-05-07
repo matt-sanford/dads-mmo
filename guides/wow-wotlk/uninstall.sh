@@ -362,6 +362,11 @@ for vol in "${VOLUMES[@]}"; do
     fi
 done
 
+# Remove any orphaned anonymous volumes
+print_info "Cleaning up any orphaned volumes..."
+docker volume prune -f 2>/dev/null || true
+print_success "Orphaned volumes cleaned up"
+
 docker network rm dads_mmo_network wow-server_ac-network \
     wow-server_default wow-server-npcbots_ac-network \
     wow-server-npcbots_default wow-server-playerbots_ac-network \
