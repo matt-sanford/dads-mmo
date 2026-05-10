@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-#  Dad's MMO Lab — WoW Gaming Mode Launcher v1.2.0
+#  Dad's MMO Lab — Playerbots Gaming Mode Launcher v1.2.0
 #  https://github.com/DadsMmoLab/dads-mmo-lab
 #
 #  FLOW:
@@ -19,7 +19,7 @@ unset LD_PRELOAD
 unset LD_LIBRARY_PATH
 
 # All stderr to log
-LOGFILE="/tmp/wow-server-launch.log"
+LOGFILE="/tmp/wow-playerbots-launch.log"
 exec 2>"$LOGFILE"
 
 # ─────────────────────────────────────────
@@ -27,13 +27,13 @@ exec 2>"$LOGFILE"
 # ─────────────────────────────────────────
 clear
 echo ""
-echo "  ⚔️  DAD'S MMO LAB — WoW Gaming Mode Launcher v${LAUNCHER_VERSION}"
+echo "  ⚔️  DAD'S MMO LAB — Playerbots Gaming Mode Launcher v${LAUNCHER_VERSION}"
 echo "  ══════════════════════════════════════"
-echo "  WoW Offline Server"
+echo "  WoW + Playerbots Server"
 echo "  ══════════════════════════════════════"
 echo ""
 
-if [ ! -d "$HOME/wow-server" ]; then
+if [ ! -d "$HOME/wow-server-playerbots" ]; then
     echo "  ERR: Server not found!"
     echo "  Run install.sh first."
     sleep 5
@@ -54,19 +54,19 @@ echo "  Starting server..."
 echo ""
 
 # Stop any other running WoW servers first
-# Only stops AzerothCore containers — never touches other Docker services
+# Prevents database conflicts between server versions
 WOW_CONTAINERS=$(docker ps --format '{{.Names}}' 2>/dev/null | \
     grep -iE "worldserver|authserver|ac-database|ac-eluna|ac-client|ac-db-import" || true)
 
 if [ -n "$WOW_CONTAINERS" ]; then
-    echo "  Stopping any running WoW servers first..."
+    echo "  Stopping any running servers first..."
     echo "$WOW_CONTAINERS" | xargs docker stop >> "$LOGFILE" 2>&1 || true
     sleep 5
     echo "  All clear!"
     echo ""
 fi
 
-cd "$HOME/wow-server" || exit 1
+cd "$HOME/wow-server-playerbots" || exit 1
 
 if docker compose up -d --scale phpmyadmin=0 >> "$LOGFILE" 2>&1; then
     echo "  Containers started!"
@@ -178,7 +178,7 @@ fi
 # ─────────────────────────────────────────
 echo ""
 
-cd "$HOME/wow-server"
+cd "$HOME/wow-server-playerbots"
 docker compose down >> "$LOGFILE" 2>&1
 
 echo "  ══════════════════════════════════════"
